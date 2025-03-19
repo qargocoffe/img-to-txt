@@ -3,21 +3,25 @@ const multer = require("multer");
 const { createWorker } = require("tesseract.js");
 const cors = require("cors");
 const fs = require("fs");
+const path = require("path");
 
 const app = express();
-const upload = multer({ dest: "/tmp/" });
+const port = process.env.PORT || 4000;
+const upload = multer({ dest: path.join(__dirname, "uploads/") });
 
 app.use(cors({ origin: "*" }));
+app.use(express.json());
+
+// Ensure uploads directory exists
+const uploadDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 // Initialize worker globally
-let workerPromise = (async () => {
-    try {
-        const worker = await createWorker("eng");
-        return worker;
-    } catch (error) {
-        console.error("Error initializing Tesseract worker:", error);
-        return null;
-    }
+let worker;
+(async () => {
+    worker = await createWorker("eng");
 })();
 
 app.post("/ocr", upload.single("file"), async (req, res) => {
@@ -27,10 +31,9 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
         }
 
         const imagePath = req.file.path;
-        const worker = await workerPromise;
 
         if (!worker) {
-            return res.status(500).send("Tesseract worker failed to initialize.");
+            return res.status(500).send("Tesseract worker is not ready.");
         }
 
         const { data } = await worker.recognize(imagePath);
@@ -43,6 +46,7 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
         res.setHeader("Content-Type", "text/plain; charset=utf-8");
         res.send(formattedText);
 
+        // Cleanup
         fs.unlinkSync(imagePath);
     } catch (error) {
         console.error("OCR Processing Error:", error);
@@ -50,5 +54,7 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
     }
 });
 
-// Export for Vercel
-module.exports = app;
+// Start server
+app.listen(port, () => {
+    console.log(`Server running on http://localhost:${port}`);
+});
