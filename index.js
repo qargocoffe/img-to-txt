@@ -1,39 +1,37 @@
 const express = require("express");
 const multer = require("multer");
-const Tesseract = require("tesseract.js-node"); // Use Node.js optimized version
+const getWorker = require("tesseract.js-node");
 const cors = require("cors");
 const fs = require("fs");
-const path = require("path");
 
 const app = express();
-const upload = multer({ dest: "/tmp/" }); // Vercel allows writing only to /tmp
+const upload = multer({ dest: "/tmp/" });
 
 app.use(cors({ origin: "*" }));
 
-// Pre-initialize Tesseract worker
-let worker = null;
+// Initialize Tesseract.js worker
+let worker;
+
 const initializeWorker = async () => {
-    if (!worker) {
-        worker = await Tesseract.createWorker("eng");
-    }
-    return worker;
+    worker = await getWorker({
+        tessdata: "/tmp/tessdata", // Make sure tessdata is available
+        languages: ["eng"], // Add more languages if needed
+    });
 };
-initializeWorker(); // Start worker initialization
+
+// Ensure the worker is initialized before handling requests
+initializeWorker().catch(console.error);
 
 app.post("/ocr", upload.single("file"), async (req, res) => {
     try {
         if (!req.file) {
-            return res.status(400).json({ error: "No file uploaded." });
+            return res.status(400).send("No file uploaded.");
         }
 
         const imagePath = req.file.path;
-        console.log("Processing image:", imagePath);
+        const text = await worker.recognize(imagePath, "eng");
 
-        const workerInstance = await initializeWorker();
-        const { data } = await workerInstance.recognize(imagePath);
-
-        // Format extracted text
-        const formattedText = data.text
+        const formattedText = text
             .replace(/\n+/g, "\n")
             .replace(/(\d+)\s*%/g, "$1%")
             .replace(/(\d+)\s*([a-zA-Z]+)/g, "$1 $2");
@@ -41,11 +39,10 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
         res.setHeader("Content-Type", "text/plain; charset=utf-8");
         res.send(formattedText);
 
-        // Clean up temp file
         fs.unlinkSync(imagePath);
     } catch (error) {
-        console.error("OCR Processing Error:", error);
-        res.status(500).json({ error: "Failed to process image." });
+        console.error(error);
+        res.status(500).send("Failed to process image.");
     }
 });
 
