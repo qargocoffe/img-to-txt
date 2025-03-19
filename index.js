@@ -40,5 +40,5 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
     }
 });
 
-// Export the handler for Vercel
+// Export for Vercel
 module.exports = app;
