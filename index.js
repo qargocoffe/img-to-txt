@@ -9,18 +9,17 @@ const upload = multer({ dest: "/tmp/" });
 
 app.use(cors({ origin: "*" }));
 
-// Initialize Tesseract.js worker
-let worker;
-
-const initializeWorker = async () => {
-    worker = await getWorker({
-        tessdata: "/tmp/tessdata", // Make sure tessdata is available
-        languages: ["eng"], // Add more languages if needed
-    });
-};
-
-// Ensure the worker is initialized before handling requests
-initializeWorker().catch(console.error);
+// Initialize worker before handling requests
+let workerPromise = (async () => {
+    try {
+        return await getWorker({
+            languages: ["eng"], // Ensure English is loaded
+        });
+    } catch (error) {
+        console.error("Error initializing Tesseract worker:", error);
+        return null;
+    }
+})();
 
 app.post("/ocr", upload.single("file"), async (req, res) => {
     try {
@@ -29,6 +28,12 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
         }
 
         const imagePath = req.file.path;
+        const worker = await workerPromise;
+
+        if (!worker) {
+            return res.status(500).send("Tesseract worker failed to initialize.");
+        }
+
         const text = await worker.recognize(imagePath, "eng");
 
         const formattedText = text
@@ -41,7 +46,7 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
 
         fs.unlinkSync(imagePath);
     } catch (error) {
-        console.error(error);
+        console.error("OCR Processing Error:", error);
         res.status(500).send("Failed to process image.");
     }
 });
