@@ -1,6 +1,6 @@
 const express = require("express");
 const multer = require("multer");
-const getWorker = require("tesseract.js-node");
+const { createWorker } = require("tesseract.js");
 const cors = require("cors");
 const fs = require("fs");
 
@@ -9,12 +9,11 @@ const upload = multer({ dest: "/tmp/" });
 
 app.use(cors({ origin: "*" }));
 
-// Initialize worker before handling requests
+// Initialize worker globally
 let workerPromise = (async () => {
     try {
-        return await getWorker({
-            languages: ["eng"], // Ensure English is loaded
-        });
+        const worker = await createWorker("eng");
+        return worker;
     } catch (error) {
         console.error("Error initializing Tesseract worker:", error);
         return null;
@@ -34,9 +33,9 @@ app.post("/ocr", upload.single("file"), async (req, res) => {
             return res.status(500).send("Tesseract worker failed to initialize.");
         }
 
-        const text = await worker.recognize(imagePath, "eng");
+        const { data } = await worker.recognize(imagePath);
 
-        const formattedText = text
+        const formattedText = data.text
             .replace(/\n+/g, "\n")
             .replace(/(\d+)\s*%/g, "$1%")
             .replace(/(\d+)\s*([a-zA-Z]+)/g, "$1 $2");
